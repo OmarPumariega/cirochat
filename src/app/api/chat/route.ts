@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import { getLLMModel } from "@/lib/ai/llm";
 import { searchSimilarChunks } from "@/lib/ai/embeddings";
 import { isLeadMessage } from "@/lib/ai/leads";
+import { sendLeadNotification } from "@/lib/email/leads";
 import { NextRequest } from "next/server";
 
 export const runtime = "nodejs";
@@ -51,6 +52,20 @@ export async function POST(req: NextRequest) {
       where: { id: conversation.id },
       data: { isLead: true },
     });
+
+    if (tenant.notificationEmail) {
+      const allMessages = [
+        ...conversation.messages,
+        { role: "user", content: message },
+      ];
+      sendLeadNotification({
+        toEmail: tenant.notificationEmail,
+        tenantName: tenant.name,
+        sessionId,
+        conversationId: conversation.id,
+        messages: allMessages,
+      }).catch(() => {});
+    }
   }
 
   // Buscar contexto RAG

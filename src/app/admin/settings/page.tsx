@@ -1,0 +1,213 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { Loader2, Save, Eye, EyeOff } from "lucide-react";
+
+type SettingsForm = {
+  llmProvider: string;
+  llmModel: string;
+  llmApiKey: string;
+  notificationEmail: string;
+};
+
+const MODELS: Record<string, { label: string; value: string }[]> = {
+  anthropic: [
+    { label: "Claude Sonnet 4.6 (recomendado)", value: "claude-sonnet-4-6" },
+    { label: "Claude Haiku 4.5", value: "claude-haiku-4-5-20251001" },
+    { label: "Claude Opus 4.8", value: "claude-opus-4-8" },
+  ],
+  openai: [
+    { label: "GPT-4o mini (recomendado)", value: "gpt-4o-mini" },
+    { label: "GPT-4o", value: "gpt-4o" },
+  ],
+  google: [
+    { label: "Gemini 2.0 Flash (recomendado)", value: "gemini-2.0-flash" },
+    { label: "Gemini 1.5 Pro", value: "gemini-1.5-pro" },
+  ],
+};
+
+export default function SettingsPage() {
+  const [form, setForm] = useState<SettingsForm>({
+    llmProvider: "anthropic",
+    llmModel: "claude-sonnet-4-6",
+    llmApiKey: "",
+    notificationEmail: "",
+  });
+  const [hasApiKey, setHasApiKey] = useState(false);
+  const [showKey, setShowKey] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    fetch("/api/admin/tenant")
+      .then((r) => r.json())
+      .then((data) => {
+        setForm({
+          llmProvider: data.llmProvider ?? "anthropic",
+          llmModel: data.llmModel ?? "claude-sonnet-4-6",
+          llmApiKey: "",
+          notificationEmail: data.notificationEmail ?? "",
+        });
+        setHasApiKey(!!data.hasApiKey);
+        setLoading(false);
+      });
+  }, []);
+
+  function set(key: keyof SettingsForm, value: string) {
+    setForm((prev) => {
+      const next = { ...prev, [key]: value };
+      // Al cambiar proveedor, resetear el modelo al primero disponible
+      if (key === "llmProvider") {
+        next.llmModel = MODELS[value]?.[0]?.value ?? "";
+      }
+      return next;
+    });
+    setSaved(false);
+  }
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setSaving(true);
+
+    const payload: Record<string, string> = {
+      llmProvider: form.llmProvider,
+      llmModel: form.llmModel,
+      notificationEmail: form.notificationEmail,
+    };
+    if (form.llmApiKey.trim()) payload.llmApiKey = form.llmApiKey;
+
+    const res = await fetch("/api/admin/tenant", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    setSaving(false);
+    if (!res.ok) {
+      setError("Error al guardar");
+    } else {
+      setSaved(true);
+      setHasApiKey(true);
+      setForm((prev) => ({ ...prev, llmApiKey: "" }));
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-40">
+        <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+      </div>
+    );
+  }
+
+  const models = MODELS[form.llmProvider] ?? [];
+
+  return (
+    <div className="space-y-5 max-w-lg">
+      <h1 className="text-xl font-semibold text-gray-900">Configuración</h1>
+
+      <form onSubmit={handleSave} className="space-y-5">
+        {/* LLM */}
+        <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
+          <h2 className="text-sm font-semibold text-gray-700">Modelo de IA</h2>
+
+          <Field label="Proveedor">
+            <select
+              value={form.llmProvider}
+              onChange={(e) => set("llmProvider", e.target.value)}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400 bg-white"
+            >
+              <option value="anthropic">Anthropic (Claude)</option>
+              <option value="openai">OpenAI (GPT)</option>
+              <option value="google">Google (Gemini)</option>
+            </select>
+          </Field>
+
+          <Field label="Modelo">
+            <select
+              value={form.llmModel}
+              onChange={(e) => set("llmModel", e.target.value)}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400 bg-white"
+            >
+              {models.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label={hasApiKey ? "API Key (dejar vacío para no cambiar)" : "API Key"}>
+            <div className="relative">
+              <input
+                type={showKey ? "text" : "password"}
+                value={form.llmApiKey}
+                onChange={(e) => set("llmApiKey", e.target.value)}
+                placeholder={hasApiKey ? "••••••••••••••••" : "sk-ant-…"}
+                className="w-full px-3 py-2 pr-10 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400 font-mono"
+              />
+              <button
+                type="button"
+                onClick={() => setShowKey((v) => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+            {hasApiKey && (
+              <p className="text-xs text-green-600 mt-1">✓ API key configurada</p>
+            )}
+          </Field>
+        </div>
+
+        {/* Notificaciones */}
+        <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
+          <h2 className="text-sm font-semibold text-gray-700">Notificaciones de leads</h2>
+
+          <Field label="Email de notificación">
+            <input
+              type="email"
+              value={form.notificationEmail}
+              onChange={(e) => set("notificationEmail", e.target.value)}
+              placeholder="ventas@tuempresa.com"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              Se enviará un email a esta dirección cuando se detecte un lead caliente
+            </p>
+          </Field>
+        </div>
+
+        {error && (
+          <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>
+        )}
+        {saved && (
+          <p className="text-sm text-green-700 bg-green-50 px-3 py-2 rounded-lg">
+            Configuración guardada correctamente
+          </p>
+        )}
+
+        <button
+          type="submit"
+          disabled={saving}
+          className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
+        >
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          Guardar configuración
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1">
+      <label className="block text-sm font-medium text-gray-700">{label}</label>
+      {children}
+    </div>
+  );
+}

@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"/Volumes/Seagate Basic/Cirochat/cirochat-app\" && git diff --quiet && git diff --cached --quiet || (git add -A && git commit -m \"auto-save: $(date \"+%Y-%m-%d %H:%M\")\" && git push) 2>/dev/null || true",
+            "statusMessage": "Guardando cambios en GitHub..."
+          }
+        ]
+      }
+    ]
+  }
+}

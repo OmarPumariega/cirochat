@@ -41,6 +41,11 @@ model Tenant {
 
   // Notifications
   notificationEmail String?
+  leadFormUrl       String?
+
+  // Rate limiting
+  maxMessagesPerConv  Int @default(50)
+  blockDurationHours  Int @default(1)
 
   documents     Document[]
   conversations Conversation[]
@@ -79,13 +84,15 @@ model DocumentChunk {
 }
 
 model Conversation {
-  id        String   @id @default(cuid())
-  tenantId  String
-  tenant    Tenant   @relation(fields: [tenantId], references: [id])
-  sessionId String
-  isLead    Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String    @id @default(cuid())
+  tenantId     String
+  tenant       Tenant    @relation(fields: [tenantId], references: [id])
+  sessionId    String
+  isLead       Boolean   @default(false)
+  summary      String?
+  blockedUntil DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   messages Message[]
 }

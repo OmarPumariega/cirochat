@@ -8,6 +8,9 @@ type SettingsForm = {
   llmModel: string;
   llmApiKey: string;
   notificationEmail: string;
+  leadFormUrl: string;
+  maxMessagesPerConv: string;
+  blockDurationHours: string;
 };
 
 const MODELS: Record<string, { label: string; value: string }[]> = {
@@ -32,6 +35,9 @@ export default function SettingsPage() {
     llmModel: "claude-sonnet-4-6",
     llmApiKey: "",
     notificationEmail: "",
+    leadFormUrl: "",
+    maxMessagesPerConv: "50",
+    blockDurationHours: "1",
   });
   const [hasApiKey, setHasApiKey] = useState(false);
   const [showKey, setShowKey] = useState(false);
@@ -49,6 +55,9 @@ export default function SettingsPage() {
           llmModel: data.llmModel ?? "claude-sonnet-4-6",
           llmApiKey: "",
           notificationEmail: data.notificationEmail ?? "",
+          leadFormUrl: data.leadFormUrl ?? "",
+          maxMessagesPerConv: String(data.maxMessagesPerConv ?? 50),
+          blockDurationHours: String(data.blockDurationHours ?? 1),
         });
         setHasApiKey(!!data.hasApiKey);
         setLoading(false);
@@ -76,6 +85,9 @@ export default function SettingsPage() {
       llmProvider: form.llmProvider,
       llmModel: form.llmModel,
       notificationEmail: form.notificationEmail,
+      leadFormUrl: form.leadFormUrl,
+      maxMessagesPerConv: form.maxMessagesPerConv,
+      blockDurationHours: form.blockDurationHours,
     };
     if (form.llmApiKey.trim()) payload.llmApiKey = form.llmApiKey;
 
@@ -163,9 +175,22 @@ export default function SettingsPage() {
           </Field>
         </div>
 
-        {/* Notificaciones */}
+        {/* Notificaciones y leads */}
         <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
-          <h2 className="text-sm font-semibold text-gray-700">Notificaciones de leads</h2>
+          <h2 className="text-sm font-semibold text-gray-700">Leads y notificaciones</h2>
+
+          <Field label="Enlace al formulario de contacto">
+            <input
+              type="url"
+              value={form.leadFormUrl}
+              onChange={(e) => set("leadFormUrl", e.target.value)}
+              placeholder="https://tuempresa.com/contacto"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              Cuando un usuario quiera ser contactado, el chatbot compartirá este enlace. Usa tu propio formulario con RGPD incluido (Google Forms, Typeform, web propia…)
+            </p>
+          </Field>
 
           <Field label="Email de notificación">
             <input
@@ -176,7 +201,40 @@ export default function SettingsPage() {
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
             />
             <p className="text-xs text-gray-400 mt-1">
-              Se enviará un email a esta dirección cuando se detecte un lead caliente
+              Se enviará un email a esta dirección cuando se detecte un lead en el chat
+            </p>
+          </Field>
+        </div>
+
+        {/* Límites de uso */}
+        <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
+          <h2 className="text-sm font-semibold text-gray-700">Límites de uso</h2>
+
+          <Field label="Máximo de mensajes por conversación">
+            <input
+              type="number"
+              min="5"
+              max="500"
+              value={form.maxMessagesPerConv}
+              onChange={(e) => set("maxMessagesPerConv", e.target.value)}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              Al superar este número, la sesión queda bloqueada temporalmente (mín. 5, máx. 500)
+            </p>
+          </Field>
+
+          <Field label="Duración del bloqueo (horas)">
+            <input
+              type="number"
+              min="1"
+              max="72"
+              value={form.blockDurationHours}
+              onChange={(e) => set("blockDurationHours", e.target.value)}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              Tiempo que estará bloqueada una sesión después de superar el límite (mín. 1h, máx. 72h)
             </p>
           </Field>
         </div>

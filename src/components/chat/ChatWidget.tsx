@@ -51,6 +51,24 @@ export default function ChatWidget({ tenant }: { tenant: TenantConfig }) {
         body: JSON.stringify({ slug: tenant.slug, sessionId: sessionId.current, message: text }),
       });
 
+      if (res.status === 429) {
+        const data = await res.json().catch(() => ({}));
+        const until = data.blockedUntil
+          ? new Date(data.blockedUntil).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" })
+          : null;
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: until
+              ? `Has alcanzado el límite de mensajes. Esta conversación estará disponible de nuevo a las ${until}.`
+              : "Has alcanzado el límite de mensajes. Por favor, intenta más tarde.",
+          },
+        ]);
+        setLoading(false);
+        return;
+      }
+
       if (!res.ok || !res.body) throw new Error("Error en la respuesta");
 
       const reader = res.body.getReader();
@@ -68,6 +86,17 @@ export default function ChatWidget({ tenant }: { tenant: TenantConfig }) {
         setMessages((prev) => {
           const updated = [...prev];
           updated[updated.length - 1] = { role: "assistant", content: assistantText };
+          return updated;
+        });
+      }
+
+      if (!assistantText) {
+        setMessages((prev) => {
+          const updated = [...prev];
+          updated[updated.length - 1] = {
+            role: "assistant",
+            content: "Lo siento, no pude obtener respuesta. El servicio puede no estar disponible.",
+          };
           return updated;
         });
       }

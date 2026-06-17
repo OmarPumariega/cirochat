@@ -32,13 +32,18 @@ export async function PATCH(req: NextRequest) {
     "accentColor",
     "logoUrl",
     "notificationEmail",
+    "leadFormUrl",
     "llmProvider",
     "llmModel",
+    "maxMessagesPerConv",
+    "blockDurationHours",
   ];
 
+  const intFields = new Set(["maxMessagesPerConv", "blockDurationHours"]);
   const data: Record<string, unknown> = {};
   for (const key of allowed) {
-    if (key in body) data[key] = body[key];
+    if (!(key in body)) continue;
+    data[key] = intFields.has(key) ? parseInt(body[key], 10) || 0 : body[key];
   }
 
   // La API key se trata aparte — se encripta antes de guardar

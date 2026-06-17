@@ -8,6 +8,7 @@ import { NextRequest } from "next/server";
 
 export const runtime = "nodejs";
 
+
 export async function POST(req: NextRequest) {
   const { slug, sessionId, message } = await req.json();
 
@@ -27,9 +28,24 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Comprobar si el sessionId está bloqueado
+  const blockedConv = await prisma.conversation.findFirst({
+    where: {
+      tenantId: tenant.id,
+      sessionId,
+      blockedUntil: { gt: new Date() },
+    },
+  });
+  if (blockedConv) {
+    return Response.json(
+      { error: "blocked", blockedUntil: blockedConv.blockedUntil },
+      { status: 429 }
+    );
+  }
+
   // Obtener o crear conversación
   let conversation = await prisma.conversation.findFirst({
-    where: { tenantId: tenant.id, sessionId },
+    where: { tenantId: tenant.id, sessionId, blockedUntil: null },
     include: { messages: { orderBy: { createdAt: "asc" }, take: 20 } },
   });
 
@@ -38,6 +54,23 @@ export async function POST(req: NextRequest) {
       data: { tenantId: tenant.id, sessionId },
       include: { messages: { orderBy: { createdAt: "asc" }, take: 20 } },
     });
+  }
+
+  // Contar mensajes totales para el límite (sin el take:20)
+  const totalMessages = await prisma.message.count({
+    where: { conversationId: conversation.id },
+  });
+
+  const maxMessages = tenant.maxMessagesPerConv ?? 50;
+  const blockMs = (tenant.blockDurationHours ?? 1) * 60 * 60 * 1000;
+
+  if (totalMessages >= maxMessages) {
+    const blockedUntil = new Date(Date.now() + blockMs);
+    await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { blockedUntil },
+    });
+    return Response.json({ error: "blocked", blockedUntil }, { status: 429 });
   }
 
   // Guardar mensaje del usuario
@@ -91,27 +124,43 @@ export async function POST(req: NextRequest) {
     formal: "Mantén un tono formal y cortés en todo momento.",
   };
 
+  const leadFormInstruction = tenant.leadFormUrl
+    ? `\nCuando el usuario muestre interés en ser contactado, recibir información, presupuesto o hablar con una persona, comparte este enlace de forma natural: ${tenant.leadFormUrl} — no pidas datos personales directamente en el chat.`
+    : "";
+
   const systemPrompt = `Eres ${tenant.chatbotName}, el asistente virtual de este negocio.
 ${toneInstructions[tenant.tone] ?? toneInstructions.profesional}
 Responde siempre en el mismo idioma en que te hablen.
-Si no sabes la respuesta, dilo honestamente y sugiere contactar con el equipo.${ragContext}`;
+Si no sabes la respuesta, dilo honestamente y sugiere contactar con el equipo.${leadFormInstruction}${ragContext}`;
 
-  const model = getLLMModel({
-    provider: tenant.llmProvider,
-    model: tenant.llmModel,
-    apiKey: tenant.llmApiKey,
-  });
+  let model;
+  try {
+    model = getLLMModel({
+      provider: tenant.llmProvider,
+      model: tenant.llmModel,
+      apiKey: tenant.llmApiKey,
+    });
+  } catch {
+    return Response.json({ error: "Configuración LLM inválida." }, { status: 503 });
+  }
 
-  const result = streamText({
-    model,
-    system: systemPrompt,
-    messages: [...history, { role: "user", content: message }],
-    onFinish: async ({ text }) => {
-      await prisma.message.create({
-        data: { conversationId: conversation!.id, role: "assistant", content: text },
-      });
-    },
-  });
+  try {
+    const result = streamText({
+      model,
+      system: systemPrompt,
+      messages: [...history, { role: "user", content: message }],
+      onFinish: async ({ text }) => {
+        await prisma.message.create({
+          data: { conversationId: conversation!.id, role: "assistant", content: text },
+        });
+      },
+    });
 
-  return result.toTextStreamResponse();
+    return result.toTextStreamResponse();
+  } catch {
+    return Response.json(
+      { error: "Error al conectar con el modelo de lenguaje. Verifica la API key." },
+      { status: 503 }
+    );
+  }
 }

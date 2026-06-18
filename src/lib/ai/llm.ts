@@ -30,20 +30,7 @@ export function getLLMModel(config: LLMConfig) {
   }
 }
 
-export function getEmbeddingModel(config: LLMConfig) {
-  const apiKey = config.apiKey ? decrypt(config.apiKey) : undefined;
-
-  switch (config.provider) {
-    case "openai": {
-      const openai = createOpenAI({ apiKey });
-      return openai.embedding("text-embedding-3-small");
-    }
-    case "anthropic":
-    case "google":
-    default: {
-      // Embeddings siempre via OpenAI si el proveedor no los soporta directamente
-      const openai = createOpenAI({ apiKey: process.env.OPENAI_FALLBACK_KEY ?? apiKey });
-      return openai.embedding("text-embedding-3-small");
-    }
-  }
+export function getEmbeddingModel(apiKey: string) {
+  const openai = createOpenAI({ apiKey });
+  return openai.embedding("text-embedding-3-small");
 }

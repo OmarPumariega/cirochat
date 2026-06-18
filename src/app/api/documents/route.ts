@@ -3,8 +3,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
 import { NextRequest, NextResponse } from "next/server";
 import { generateEmbedding } from "@/lib/ai/embeddings";
-import * as pdfParse from "pdf-parse";
-const pdf = (pdfParse as any).default ?? pdfParse;
+import { extractText, getDocumentProxy } from "unpdf";
 
 export const runtime = "nodejs";
 
@@ -51,9 +50,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "El archivo no puede superar 10MB" }, { status: 400 });
   }
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const parsed = await pdf(buffer);
-  const text = parsed.text?.trim();
+  const buffer = new Uint8Array(await file.arrayBuffer());
+  const pdf = await getDocumentProxy(buffer);
+  const { text: rawText } = await extractText(pdf, { mergePages: true });
+  const text = rawText?.trim();
 
   if (!text || text.length < 10) {
     return NextResponse.json({ error: "No se pudo extraer texto del PDF" }, { status: 422 });

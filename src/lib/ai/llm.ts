@@ -25,6 +25,13 @@ export function getLLMModel(config: LLMConfig) {
       const google = createGoogleGenerativeAI({ apiKey });
       return google(config.model || "gemini-2.0-flash");
     }
+    case "openrouter": {
+      const openrouter = createOpenAI({
+        apiKey,
+        baseURL: "https://openrouter.ai/api/v1",
+      });
+      return openrouter(config.model || "openai/gpt-4o-mini");
+    }
     default:
       throw new Error(`Proveedor LLM no soportado: ${config.provider}`);
   }

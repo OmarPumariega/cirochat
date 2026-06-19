@@ -28,6 +28,7 @@ export async function PATCH(req: NextRequest) {
     "chatbotName",
     "welcomeMessage",
     "tone",
+    "systemInstructions",
     "primaryColor",
     "accentColor",
     "logoUrl",
@@ -37,6 +38,10 @@ export async function PATCH(req: NextRequest) {
     "llmModel",
     "maxMessagesPerConv",
     "blockDurationHours",
+    "wordpressUrl",
+    "woocommerceUrl",
+    "woocommerceKey",
+    "woocommerceSecret",
   ];
 
   const intFields = new Set(["maxMessagesPerConv", "blockDurationHours"]);

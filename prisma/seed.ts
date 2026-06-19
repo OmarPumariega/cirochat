@@ -20,23 +20,26 @@ async function main() {
       tone: "profesional",
       llmProvider: "openai",
       llmModel: "gpt-4o-mini",
-      notificationEmail: "admin@demo.com",
     },
   });
 
-  const hashedPassword = await bcrypt.hash("demo1234", 10);
+  const hashedPassword = await bcrypt.hash("admin1234", 10);
 
   await prisma.user.upsert({
-    where: { email: "admin@demo.com" },
+    where: { email: "admin@cirochat.com" },
     update: {},
     create: {
-      email: "admin@demo.com",
+      email: "admin@cirochat.com",
       password: hashedPassword,
+      role: "superadmin",
       tenantId: tenant.id,
     },
   });
 
-  console.log("✓ Seed completado — tenant: demo, login: admin@demo.com / demo1234");
+  console.log("✓ Seed completado");
+  console.log("  Tenant: demo");
+  console.log("  Login superadmin: admin@cirochat.com / admin1234");
+  console.log("  ⚠️  Cambia estas credenciales antes de entregar al cliente");
 }
 
 main()

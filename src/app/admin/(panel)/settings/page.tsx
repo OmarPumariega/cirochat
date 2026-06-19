@@ -11,6 +11,18 @@ type SettingsForm = {
   leadFormUrl: string;
   maxMessagesPerConv: string;
   blockDurationHours: string;
+  wordpressUrl: string;
+  woocommerceUrl: string;
+  woocommerceKey: string;
+  woocommerceSecret: string;
+};
+
+const CUSTOM = "__custom__";
+
+const MODEL_DOCS: Record<string, string> = {
+  anthropic: "https://docs.anthropic.com/en/docs/about-claude/models",
+  openai: "https://platform.openai.com/docs/models",
+  google: "https://ai.google.dev/gemini-api/docs/models",
 };
 
 const MODELS: Record<string, { label: string; value: string }[]> = {
@@ -18,14 +30,18 @@ const MODELS: Record<string, { label: string; value: string }[]> = {
     { label: "Claude Sonnet 4.6 (recomendado)", value: "claude-sonnet-4-6" },
     { label: "Claude Haiku 4.5", value: "claude-haiku-4-5-20251001" },
     { label: "Claude Opus 4.8", value: "claude-opus-4-8" },
+    { label: "Personalizado...", value: CUSTOM },
   ],
   openai: [
     { label: "GPT-4o mini (recomendado)", value: "gpt-4o-mini" },
     { label: "GPT-4o", value: "gpt-4o" },
+    { label: "Personalizado...", value: CUSTOM },
   ],
   google: [
     { label: "Gemini 2.0 Flash (recomendado)", value: "gemini-2.0-flash" },
+    { label: "Gemini 2.5 Flash", value: "gemini-2.5-flash" },
     { label: "Gemini 1.5 Pro", value: "gemini-1.5-pro" },
+    { label: "Personalizado...", value: CUSTOM },
   ],
 };
 
@@ -38,9 +54,15 @@ export default function SettingsPage() {
     leadFormUrl: "",
     maxMessagesPerConv: "50",
     blockDurationHours: "1",
+    wordpressUrl: "",
+    woocommerceUrl: "",
+    woocommerceKey: "",
+    woocommerceSecret: "",
   });
+  const [customModel, setCustomModel] = useState("");
   const [hasApiKey, setHasApiKey] = useState(false);
   const [showKey, setShowKey] = useState(false);
+  const [showWcSecret, setShowWcSecret] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -50,15 +72,24 @@ export default function SettingsPage() {
     fetch("/api/admin/tenant")
       .then((r) => r.json())
       .then((data) => {
+        const provider = data.llmProvider ?? "anthropic";
+        const savedModel = data.llmModel ?? "claude-sonnet-4-6";
+        const knownModels = MODELS[provider] ?? [];
+        const isKnown = knownModels.some((m) => m.value === savedModel);
         setForm({
-          llmProvider: data.llmProvider ?? "anthropic",
-          llmModel: data.llmModel ?? "claude-sonnet-4-6",
+          llmProvider: provider,
+          llmModel: isKnown ? savedModel : CUSTOM,
           llmApiKey: "",
           notificationEmail: data.notificationEmail ?? "",
           leadFormUrl: data.leadFormUrl ?? "",
           maxMessagesPerConv: String(data.maxMessagesPerConv ?? 50),
           blockDurationHours: String(data.blockDurationHours ?? 1),
+          wordpressUrl: data.wordpressUrl ?? "",
+          woocommerceUrl: data.woocommerceUrl ?? "",
+          woocommerceKey: data.woocommerceKey ?? "",
+          woocommerceSecret: data.woocommerceSecret ?? "",
         });
+        if (!isKnown) setCustomModel(savedModel);
         setHasApiKey(!!data.hasApiKey);
         setLoading(false);
       });
@@ -67,9 +98,9 @@ export default function SettingsPage() {
   function set(key: keyof SettingsForm, value: string) {
     setForm((prev) => {
       const next = { ...prev, [key]: value };
-      // Al cambiar proveedor, resetear el modelo al primero disponible
       if (key === "llmProvider") {
         next.llmModel = MODELS[value]?.[0]?.value ?? "";
+        setCustomModel("");
       }
       return next;
     });
@@ -81,13 +112,30 @@ export default function SettingsPage() {
     setError("");
     setSaving(true);
 
+    const resolvedModel =
+      form.llmProvider === "openrouter"
+        ? form.llmModel
+        : form.llmModel === CUSTOM
+        ? customModel.trim()
+        : form.llmModel;
+
+    if (!resolvedModel) {
+      setError("Escribe el nombre del modelo personalizado");
+      setSaving(false);
+      return;
+    }
+
     const payload: Record<string, string> = {
       llmProvider: form.llmProvider,
-      llmModel: form.llmModel,
+      llmModel: resolvedModel,
       notificationEmail: form.notificationEmail,
       leadFormUrl: form.leadFormUrl,
       maxMessagesPerConv: form.maxMessagesPerConv,
       blockDurationHours: form.blockDurationHours,
+      wordpressUrl: form.wordpressUrl,
+      woocommerceUrl: form.woocommerceUrl,
+      woocommerceKey: form.woocommerceKey,
+      woocommerceSecret: form.woocommerceSecret,
     };
     if (form.llmApiKey.trim()) payload.llmApiKey = form.llmApiKey;
 
@@ -135,21 +183,71 @@ export default function SettingsPage() {
               <option value="anthropic">Anthropic (Claude)</option>
               <option value="openai">OpenAI (GPT)</option>
               <option value="google">Google (Gemini)</option>
+              <option value="openrouter">OpenRouter (cientos de modelos)</option>
             </select>
           </Field>
 
           <Field label="Modelo">
-            <select
-              value={form.llmModel}
-              onChange={(e) => set("llmModel", e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400 bg-white"
-            >
-              {models.map((m) => (
-                <option key={m.value} value={m.value}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
+            {form.llmProvider === "openrouter" ? (
+              <>
+                <input
+                  type="text"
+                  value={form.llmModel}
+                  onChange={(e) => set("llmModel", e.target.value)}
+                  placeholder="ej: openai/gpt-4o, anthropic/claude-3.5-sonnet, meta-llama/llama-3.1-70b-instruct"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400 font-mono"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Escribe el ID exacto del modelo.{" "}
+                  <a
+                    href="https://openrouter.ai/models"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-500 hover:underline"
+                  >
+                    Ver todos los modelos disponibles →
+                  </a>
+                </p>
+              </>
+            ) : (
+              <>
+                <select
+                  value={form.llmModel}
+                  onChange={(e) => set("llmModel", e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400 bg-white"
+                >
+                  {models.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+                {form.llmModel === CUSTOM && (
+                  <>
+                    <input
+                      type="text"
+                      value={customModel}
+                      onChange={(e) => setCustomModel(e.target.value)}
+                      placeholder="Escribe el ID exacto del modelo"
+                      className="mt-2 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400 font-mono"
+                      autoFocus
+                    />
+                    <p className="text-xs text-gray-400 mt-1">
+                      {MODEL_DOCS[form.llmProvider] && (
+                        <a
+                          href={MODEL_DOCS[form.llmProvider]}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-500 hover:underline"
+                        >
+                          Ver modelos disponibles →
+                        </a>
+                      )}
+                    </p>
+                  </>
+                )}
+              </>
+            )}
           </Field>
 
           <Field label={hasApiKey ? "API Key (dejar vacío para no cambiar)" : "API Key"}>
@@ -236,6 +334,81 @@ export default function SettingsPage() {
             <p className="text-xs text-gray-400 mt-1">
               Tiempo que estará bloqueada una sesión después de superar el límite (mín. 1h, máx. 72h)
             </p>
+          </Field>
+        </div>
+
+        {/* WordPress */}
+        <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-700">WordPress</h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              El chatbot consultará páginas y posts en tiempo real para responder sobre servicios, horarios, ubicación, etc.
+            </p>
+          </div>
+
+          <Field label="URL del sitio WordPress">
+            <input
+              type="url"
+              value={form.wordpressUrl}
+              onChange={(e) => set("wordpressUrl", e.target.value)}
+              placeholder="https://tuempresa.com"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              Solo la URL base. No necesita credenciales para contenido público.
+            </p>
+          </Field>
+        </div>
+
+        {/* WooCommerce */}
+        <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-700">WooCommerce</h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              El chatbot consultará productos, precios y stock en tiempo real. Genera las claves en WooCommerce → Ajustes → Avanzado → REST API.
+            </p>
+          </div>
+
+          <Field label="URL de la tienda">
+            <input
+              type="url"
+              value={form.woocommerceUrl}
+              onChange={(e) => set("woocommerceUrl", e.target.value)}
+              placeholder="https://tuempresa.com"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              Normalmente la misma URL que WordPress.
+            </p>
+          </Field>
+
+          <Field label="Consumer Key">
+            <input
+              type="text"
+              value={form.woocommerceKey}
+              onChange={(e) => set("woocommerceKey", e.target.value)}
+              placeholder="ck_••••••••••••••••"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400 font-mono"
+            />
+          </Field>
+
+          <Field label="Consumer Secret">
+            <div className="relative">
+              <input
+                type={showWcSecret ? "text" : "password"}
+                value={form.woocommerceSecret}
+                onChange={(e) => set("woocommerceSecret", e.target.value)}
+                placeholder="cs_••••••••••••••••"
+                className="w-full px-3 py-2 pr-10 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400 font-mono"
+              />
+              <button
+                type="button"
+                onClick={() => setShowWcSecret((v) => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                {showWcSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
           </Field>
         </div>
 

@@ -9,6 +9,7 @@ import {
   Palette,
   Settings,
   Users,
+  UserCog,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -21,8 +22,13 @@ const navItems = [
   { href: "/admin/settings", icon: Settings, label: "Configuración" },
 ];
 
-export default function AdminSidebar() {
+const superAdminItems = [
+  { href: "/admin/users", icon: UserCog, label: "Usuarios" },
+];
+
+export default function AdminSidebar({ role }: { role: string }) {
   const pathname = usePathname();
+  const allItems = role === "superadmin" ? [...navItems, ...superAdminItems] : navItems;
 
   return (
     <aside className="w-56 bg-white border-r border-gray-100 flex flex-col shrink-0">
@@ -31,7 +37,7 @@ export default function AdminSidebar() {
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-0.5">
-        {navItems.map((item) => {
+        {allItems.map((item) => {
           const active = pathname.startsWith(item.href);
           return (
             <Link

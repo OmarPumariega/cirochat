@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Loader2, Save } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Loader2, Save, Upload, X } from "lucide-react";
 
 type TenantData = {
   chatbotName: string;
   welcomeMessage: string;
   tone: string;
+  systemInstructions: string;
   primaryColor: string;
   accentColor: string;
   logoUrl: string | null;
@@ -17,14 +18,18 @@ export default function CustomizePage() {
     chatbotName: "",
     welcomeMessage: "",
     tone: "profesional",
+    systemInstructions: "",
     primaryColor: "#000000",
     accentColor: "#ffffff",
-    logoUrl: "",
+    logoUrl: null,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetch("/api/admin/tenant")
@@ -34,9 +39,10 @@ export default function CustomizePage() {
           chatbotName: data.chatbotName ?? "",
           welcomeMessage: data.welcomeMessage ?? "",
           tone: data.tone ?? "profesional",
+          systemInstructions: data.systemInstructions ?? "",
           primaryColor: data.primaryColor ?? "#000000",
           accentColor: data.accentColor ?? "#ffffff",
-          logoUrl: data.logoUrl ?? "",
+          logoUrl: data.logoUrl ?? null,
         });
         setLoading(false);
       });
@@ -47,24 +53,62 @@ export default function CustomizePage() {
     setSaved(false);
   }
 
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLogoFile(file);
+    setLogoPreview(URL.createObjectURL(file));
+    setSaved(false);
+  }
+
+  function removeLogo() {
+    setLogoFile(null);
+    setLogoPreview(null);
+    setForm((prev) => ({ ...prev, logoUrl: null }));
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    setSaved(false);
+  }
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setSaving(true);
 
+    let finalLogoUrl = form.logoUrl;
+
+    // Subir imagen si hay una nueva seleccionada
+    if (logoFile) {
+      const fd = new FormData();
+      fd.append("logo", logoFile);
+      const uploadRes = await fetch("/api/admin/upload-logo", { method: "POST", body: fd });
+      if (!uploadRes.ok) {
+        const data = await uploadRes.json().catch(() => ({}));
+        setError(data.error ?? "Error al subir la imagen");
+        setSaving(false);
+        return;
+      }
+      const { logoUrl } = await uploadRes.json();
+      finalLogoUrl = logoUrl;
+    }
+
     const res = await fetch("/api/admin/tenant", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
+      body: JSON.stringify({ ...form, logoUrl: finalLogoUrl }),
     });
 
     setSaving(false);
     if (!res.ok) {
       setError("Error al guardar");
     } else {
+      const data = await res.json();
+      setForm((prev) => ({ ...prev, logoUrl: data.logoUrl }));
+      setLogoFile(null);
       setSaved(true);
     }
   }
+
+  const displayLogo = logoPreview ?? form.logoUrl;
 
   if (loading) {
     return (
@@ -79,6 +123,7 @@ export default function CustomizePage() {
       <h1 className="text-xl font-semibold text-gray-900">Personalización</h1>
 
       <form onSubmit={handleSave} className="space-y-5">
+        {/* Comportamiento */}
         <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
           <h2 className="text-sm font-semibold text-gray-700">Comportamiento</h2>
 
@@ -113,8 +158,22 @@ export default function CustomizePage() {
               <option value="formal">Formal</option>
             </select>
           </Field>
+
+          <Field label="Instrucciones y protocolo">
+            <textarea
+              value={form.systemInstructions}
+              onChange={(e) => set("systemInstructions", e.target.value)}
+              rows={6}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400 resize-none font-mono"
+              placeholder={"Ejemplos:\n— Solo responde sobre fontanería y servicios de la empresa.\n— Tu objetivo es conseguir que el usuario reserve una cita.\n— Nunca menciones precios exactos, deriva al formulario.\n— Si preguntan por la competencia, no respondas."}
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              Reglas, objetivos y comportamientos específicos del chatbot. Se aplican en cada conversación.
+            </p>
+          </Field>
         </div>
 
+        {/* Apariencia */}
         <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
           <h2 className="text-sm font-semibold text-gray-700">Apariencia</h2>
 
@@ -131,7 +190,7 @@ export default function CustomizePage() {
               </div>
             </Field>
 
-            <Field label="Color de acento (texto)">
+            <Field label="Color de texto">
               <div className="flex items-center gap-2">
                 <input
                   type="color"
@@ -144,33 +203,82 @@ export default function CustomizePage() {
             </Field>
           </div>
 
-          <Field label="URL del logo (opcional)">
-            <input
-              type="url"
-              value={form.logoUrl ?? ""}
-              onChange={(e) => set("logoUrl", e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
-              placeholder="https://…"
-            />
+          {/* Logo upload */}
+          <Field label="Logo / Avatar del chatbot">
+            <div className="flex items-center gap-4">
+              {/* Avatar preview */}
+              <div className="relative flex-shrink-0">
+                {displayLogo ? (
+                  <>
+                    <img
+                      src={displayLogo}
+                      alt="logo"
+                      className="h-16 w-16 rounded-full object-cover border border-gray-200"
+                    />
+                    <button
+                      type="button"
+                      onClick={removeLogo}
+                      className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-gray-700 text-white flex items-center justify-center hover:bg-red-500 transition-colors"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </>
+                ) : (
+                  <div className="h-16 w-16 rounded-full bg-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center">
+                    <Upload className="h-5 w-5 text-gray-400" />
+                  </div>
+                )}
+              </div>
+
+              <div className="flex-1">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml"
+                  onChange={handleFileChange}
+                  className="hidden"
+                  id="logo-upload"
+                />
+                <label
+                  htmlFor="logo-upload"
+                  className="inline-flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 cursor-pointer transition-colors"
+                >
+                  <Upload className="h-4 w-4" />
+                  {displayLogo ? "Cambiar imagen" : "Subir imagen"}
+                </label>
+                <p className="mt-1 text-xs text-gray-400">JPG, PNG, WEBP o SVG · Máx. 2 MB</p>
+              </div>
+            </div>
           </Field>
 
-          {/* Preview */}
+          {/* Preview del header del chat */}
           <div className="mt-2">
-            <p className="text-xs text-gray-400 mb-2">Vista previa del header</p>
+            <p className="text-xs text-gray-400 mb-2">Vista previa del chat</p>
             <div
-              className="flex items-center gap-2 px-4 py-3 rounded-xl"
+              className="flex items-center gap-3 px-4 py-3 rounded-xl"
               style={{ backgroundColor: form.primaryColor }}
             >
-              {form.logoUrl && (
+              {displayLogo ? (
                 <img
-                  src={form.logoUrl}
+                  src={displayLogo}
                   alt=""
-                  className="h-7 w-7 rounded-full object-cover"
-                  onError={(e) => (e.currentTarget.style.display = "none")}
+                  className="h-8 w-8 rounded-full object-cover"
                 />
+              ) : (
+                <div className="h-8 w-8 rounded-full bg-white/20 flex items-center justify-center">
+                  <span className="text-xs font-bold" style={{ color: form.accentColor }}>
+                    {(form.chatbotName || "A").charAt(0).toUpperCase()}
+                  </span>
+                </div>
               )}
               <span className="text-sm font-semibold" style={{ color: form.accentColor }}>
                 {form.chatbotName || "Asistente"}
+              </span>
+              <span
+                className="ml-auto text-xs px-2 py-0.5 rounded-full bg-white/20"
+                style={{ color: form.accentColor }}
+              >
+                En línea
               </span>
             </div>
           </div>

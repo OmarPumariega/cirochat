@@ -128,10 +128,14 @@ export async function POST(req: NextRequest) {
     ? `\nCuando el usuario muestre interés en ser contactado, recibir información, presupuesto o hablar con una persona, comparte este enlace de forma natural: ${tenant.leadFormUrl} — no pidas datos personales directamente en el chat.`
     : "";
 
+  const customInstructions = tenant.systemInstructions?.trim()
+    ? `\n\nInstrucciones específicas:\n${tenant.systemInstructions.trim()}`
+    : "";
+
   const systemPrompt = `Eres ${tenant.chatbotName}, el asistente virtual de este negocio.
 ${toneInstructions[tenant.tone] ?? toneInstructions.profesional}
 Responde siempre en el mismo idioma en que te hablen.
-Si no sabes la respuesta, dilo honestamente y sugiere contactar con el equipo.${leadFormInstruction}${ragContext}`;
+Si no sabes la respuesta, dilo honestamente y sugiere contactar con el equipo.${leadFormInstruction}${customInstructions}${ragContext}`;
 
   let model;
   try {

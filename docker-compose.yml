@@ -1,0 +1,75 @@
+# ============================================================
+# CIROCHAT — Producción en VPS Contabo (gestión por SSH)
+# Proxy público: Traefik de Coolify (red externa "coolify").
+# La app se descubre por etiquetas Traefik; SSL automático (Let's Encrypt).
+# La DB NO se publica al host ni a Traefik (solo red interna).
+# ============================================================
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: cirochat-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - cirochat_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cirochat-internal
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cirochat-app
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Sobrescribe la URL para apuntar al contenedor "db" dentro de la red.
+      DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?schema=public"
+      NODE_ENV: production
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - cirochat_uploads:/app/public/uploads
+    networks:
+      - cirochat-internal
+      - coolify
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=coolify"
+      # Compresión y redirección http->https
+      - "traefik.http.middlewares.cirochat-gzip.compress=true"
+      - "traefik.http.middlewares.cirochat-redir.redirectscheme.scheme=https"
+      # Router HTTP (80) -> https
+      - "traefik.http.routers.cirochat-http.rule=Host(`cirochat.agenciaciro.com`)"
+      - "traefik.http.routers.cirochat-http.entryPoints=http"
+      - "traefik.http.routers.cirochat-http.middlewares=cirochat-redir"
+      - "traefik.http.routers.cirochat-http.service=cirochat-svc"
+      # Router HTTPS (443) con certificado Let's Encrypt
+      - "traefik.http.routers.cirochat-https.rule=Host(`cirochat.agenciaciro.com`)"
+      - "traefik.http.routers.cirochat-https.entryPoints=https"
+      - "traefik.http.routers.cirochat-https.middlewares=cirochat-gzip"
+      - "traefik.http.routers.cirochat-https.tls=true"
+      - "traefik.http.routers.cirochat-https.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.cirochat-https.service=cirochat-svc"
+      # Servicio: puerto del contenedor al que Traefik envía el tráfico
+      - "traefik.http.services.cirochat-svc.loadbalancer.server.port=3000"
+
+volumes:
+  cirochat_pgdata:
+  cirochat_uploads:
+
+networks:
+  cirochat-internal:
+  coolify:
+    external: true

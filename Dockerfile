@@ -11,7 +11,11 @@ COPY . .
 
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npx prisma generate
-RUN npm run build
+RUN ENCRYPTION_KEY="build-placeholder-key" \
+    DATABASE_URL="postgresql://build:build@localhost:5432/build" \
+    NEXTAUTH_URL="https://cirochat.agenciaciro.com" \
+    NEXTAUTH_SECRET="build-placeholder" \
+    npm run build
 
 ENV NODE_ENV=production
 EXPOSE 3000

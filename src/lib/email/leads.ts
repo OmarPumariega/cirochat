@@ -8,6 +8,15 @@ type LeadEmailParams = {
   messages: { role: string; content: string }[];
 };
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function buildTransport() {
   return nodemailer.createTransport({
     host: process.env.EMAIL_HOST,
@@ -47,7 +56,7 @@ Puedes ver la conversación completa en tu panel de administración.`,
 <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #1a1a1a;">
   <div style="background: #16a34a; color: white; padding: 20px 24px; border-radius: 12px 12px 0 0;">
     <h2 style="margin: 0; font-size: 18px;">🔥 Nuevo lead captado</h2>
-    <p style="margin: 4px 0 0; font-size: 14px; opacity: 0.9;">${params.tenantName}</p>
+    <p style="margin: 4px 0 0; font-size: 14px; opacity: 0.9;">${escapeHtml(params.tenantName)}</p>
   </div>
 
   <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-top: none; padding: 24px; border-radius: 0 0 12px 12px;">
@@ -64,7 +73,7 @@ Puedes ver la conversación completa en tu panel de administración.`,
             ${m.role === "user"
               ? "background: #111827; color: white; border-bottom-right-radius: 4px;"
               : "background: #f3f4f6; color: #1f2937; border-bottom-left-radius: 4px;"}">
-            ${m.content.replace(/\n/g, "<br>")}
+            ${escapeHtml(m.content).replace(/\n/g, "<br>")}
           </div>
         </div>`
         )

@@ -4,16 +4,35 @@ import { getLLMModel } from "@/lib/ai/llm";
 import { searchSimilarChunks } from "@/lib/ai/embeddings";
 import { isLeadMessage } from "@/lib/ai/leads";
 import { sendLeadNotification } from "@/lib/email/leads";
+import { chatLimiter, getClientIp } from "@/lib/rate-limit";
 import { NextRequest } from "next/server";
 
 export const runtime = "nodejs";
 
+const MAX_MESSAGE_LENGTH = 2000;
 
 export async function POST(req: NextRequest) {
-  const { slug, sessionId, message } = await req.json();
+  // --- Rate limit por IP (protege contra abuso del LLM) ---
+  const ip = getClientIp(req.headers);
+  try {
+    await chatLimiter.consume(ip, 1);
+  } catch {
+    return Response.json(
+      { error: "Demasiadas solicitudes. Inténtalo de nuevo en unos minutos." },
+      { status: 429 }
+    );
+  }
+
+  const body = await req.json();
+  const slug = typeof body.slug === "string" ? body.slug : "";
+  const sessionId = typeof body.sessionId === "string" ? body.sessionId : "";
+  const message = typeof body.message === "string" ? body.message : "";
 
   if (!slug || !sessionId || !message) {
     return Response.json({ error: "Faltan parámetros" }, { status: 400 });
+  }
+  if (message.length > MAX_MESSAGE_LENGTH) {
+    return Response.json({ error: "Mensaje demasiado largo" }, { status: 413 });
   }
 
   const tenant = await prisma.tenant.findUnique({ where: { slug } });
